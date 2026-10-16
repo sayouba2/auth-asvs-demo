@@ -105,18 +105,3 @@ La revue manuelle est enregistrée séparément dans
   réservations atomiques avant Argon2, 429/Retry-After, refus fermé en panne.
 - Logs limités aux événements et identifiants HMAC ; pas de corps de requête,
   e-mail brut, IP brute, hash de mot de passe ou cookie.
-
-## État de validation dans l'environnement de création
-
-Le code et les suites sont fournis. Les contrôles statiques de la liste,
-des migrations et de l'inventaire fonctionnel ont été exécutés.
-Un lint avec les règles du projet a également réussi hors ligne, avec des
-outils compatibles déjà présents sur la machine (ESLint 9.39.5,
-typescript-eslint 8.68.0, globals 16.5.0). Voir
-`security/evidence/lint-offline.json` pour la version et l'empreinte des règles.
-L'installation des dépendances, le typecheck complet, les tests API
-et Playwright restent à exécuter : le terminal de création ne résout pas
-le registre npm et n'accède pas au socket Docker, même après redémarrage.
-Sans dépendances installées, aucun lockfile vérifié n'est disponible :
-après une installation réussie, conserver le `pnpm-lock.yaml` généré et
-utiliser `pnpm install --frozen-lockfile` en CI.
