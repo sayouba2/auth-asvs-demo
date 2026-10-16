@@ -106,36 +106,6 @@ La revue manuelle est enregistrée séparément dans
 - Logs limités aux événements et identifiants HMAC ; pas de corps de requête,
   e-mail brut, IP brute, hash de mot de passe ou cookie.
 
-## Déploiement
-
-Configurer HTTPS et `NODE_ENV=production`, une origine HTTPS exacte,
-des secrets `PROXY_SECRET` et `RATE_LIMIT_SECRET` distincts et communs aux
-instances, ainsi que PostgreSQL/Redis privés et protégés. L'application refuse
-une origine HTTP en production. Le mode HTTP n'est permis qu'à localhost
-en développement.
-
-Le serveur Next personnalisé doit être lancé avec
-`pnpm --filter @demo/web start` (pas `next start`) : il établit l'adresse
-client transmise à Nest. Il n'existe aucune confiance implicite dans
-X-Forwarded-For. Si un reverse proxy TLS précède Next, configurer
-`TRUSTED_PROXY_IP` avec son adresse TCP exacte et lui faire **remplacer**
-X-Forwarded-For par l'adresse du client, sans conserver l'en-tête entrant.
-Ne jamais exposer le port API ou publier les secrets proxy côté navigateur.
-En déploiement multi-hôtes, protéger également le transport interne.
-
-Appliquer les migrations avec `pnpm --filter @demo/api prisma migrate deploy`,
-compiler avec `pnpm build`, lancer l'API avec
-`pnpm --filter @demo/api start`. En production, injecter explicitement
-les variables d'environnement au processus API (le script start ne lit pas .env).
-
-Les limites proposées ne suffisent pas contre tous les réseaux d'attaque
-distribués. Mesurer les coûts Argon2 et le trafic, surveiller les logs,
-prévoir une réponse graduée au proxy. Le démonstrateur ne vérifie pas la
-possession de l'adresse e-mail et n'offre pas de récupération de compte.
-L'inscription peut indiquer qu'une adresse n'est pas disponible ; la connexion
-emploie un échec générique et un hash fictif pour les comptes inconnus.
-Évaluer les autres chapitres ASVS avant toute utilisation sensible.
-
 ## État de validation dans l'environnement de création
 
 Le code et les suites sont fournis. Les contrôles statiques de la liste,
