@@ -1,0 +1,27 @@
+{
+  "name": "auth-asvs-demo",
+  "private": true,
+  "packageManager": "pnpm@10.34.7",
+  "engines": { "node": ">=20.19" },
+  "scripts": {
+    "setup:env": "node scripts/setup-env.mjs",
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "build": "pnpm -r build",
+    "lint": "eslint apps scripts",
+    "typecheck": "pnpm -r typecheck",
+    "test": "node scripts/test-runner.mjs api",
+    "test:e2e": "node scripts/test-runner.mjs all",
+    "test:security": "node scripts/test-runner.mjs security",
+    "test:static": "node --test scripts/static.test.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.0",
+    "@playwright/test": "^1.56.0",
+    "@types/node": "^22.18.0",
+    "dotenv": "^17.2.3",
+    "eslint": "^9.39.0",
+    "globals": "^16.4.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.46.0"
+  }
+}

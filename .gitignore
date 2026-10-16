@@ -1,0 +1,36 @@
+node_modules/
+.pnpm-store/
+.env
+.env.*
+!.env.example
+.next/
+dist/
+coverage/
+test-results/
+playwright-report/
+*.tsbuildinfo
+security/evidence/*.json
+security/evidence/*.log
+
+# Documents et fichiers utilisés pour le rapport
+*.[pP][dD][fF]
+/images/
+/logos/
+/output/
+*.tex
+*.aux
+*.toc
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+*.bbl
+*.blg
+*.log
+
+# Instructions et configuration locales des agents
+[Aa][Gg][Ee][Nn][Tt].[Mm][Dd]
+[Aa][Gg][Ee][Nn][Tt][Ss].[Mm][Dd]
+.codex/
+.agents/
+.aws/

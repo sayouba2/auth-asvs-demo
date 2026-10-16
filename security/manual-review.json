@@ -1,0 +1,34 @@
+{
+  "reviewedAt": "2026-10-14",
+  "reviewer": "Revue du code par Codex ; aucun audit indépendant revendiqué",
+  "checks": {
+    "T-01": {
+      "status": "PASS",
+      "evidence": "Revue documentaire : LIMITS et rate-limiting.md concordent (30/900, 5/300, 10/900, 5/900). Lua atomique, pas de prolongation sur refus, HMAC des clés, refus fermé 503, proxy explicite et limites distribuées documentés. Exécution Redis évaluée séparément par T-10."
+    },
+    "T-11": {
+      "status": "PASS",
+      "evidence": "Revue migrations, package.json et setup-env.mjs : aucun INSERT, seed ou compte utilisateur initial. Contrôle de la base fraîche encore requis."
+    },
+    "T-12": {
+      "status": "PASS",
+      "evidence": "N/A : seuls register/login/me/change-password/logout existent. CredentialsDto impose un mot de passe choisi. Aucun e-mail ni code d'activation ni mot de passe initial n'est émis. Le hash fictif anti-énumération ne correspond à aucun compte ; les jetons aléatoires sont des sessions. Réévaluer si un nouveau parcours est ajouté."
+    },
+    "T-13": {
+      "status": "PASS",
+      "evidence": "Revue complète des routes, DTO, schéma Prisma, composants et pages : aucune question secrète ou indication du mot de passe ; aucun parcours de récupération."
+    }
+  },
+  "additionalManualChecks": [
+    {
+      "control": "Gestionnaires de mots de passe tiers",
+      "status": "NON TESTÉ",
+      "evidence": "Les attributs et le collage sont couverts par Playwright ; aucune extension tierce n'a été testée."
+    },
+    {
+      "control": "Cookie sur un déploiement HTTPS réel",
+      "status": "NON TESTÉ",
+      "evidence": "Aucun déploiement HTTPS effectué ; la configuration Secure et __Host- possède un test séparé."
+    }
+  ]
+}
