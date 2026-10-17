@@ -7,7 +7,7 @@ Fenêtres fixes, démarrant à la première requête, compteurs partagés Redis.
 |---|---|---:|---:|
 | login | IP | 30 tentatives | 900 s |
 | login | IP + e-mail normalisé | 5 échecs | 300 s |
-| register | IP | 10 tentatives | 900 s |
+| register (demande d'inscription) | IP | 10 tentatives | 900 s |
 | change-password | utilisateur | 5 tentatives | 900 s |
 
 Une réservation atomique Lua est prise avant la vérification Argon2, y compris
@@ -47,7 +47,7 @@ et déconnexion restent possibles. Délai Redis borné à 1 seconde par commande
 
 Les logs JSON contiennent seulement horodatage, type d'événement, identifiant
 pseudonyme et résultat ; jamais corps, e-mail, IP brute, mot de passe, hash
-de mot de passe ou jeton. Événements : inscription, échec/succès de connexion,
+de mot de passe ou jeton. Événements : demande d'inscription, validation par l'administrateur, échec/succès de connexion,
 changement, déconnexion, limitation, Redis indisponible, erreurs internes.
 Collecter ces logs avec rétention courte (7 jours recommandés), accès restreint.
 Surveiller les volumes d'échecs, de 429 et de 503 ; alerter sur une hausse.

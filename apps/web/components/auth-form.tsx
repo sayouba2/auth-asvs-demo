@@ -5,7 +5,7 @@ import { PasswordField } from './password-field';
 type Mode = 'login' | 'register' | 'change';
 const copy = {
   login: { title: 'Connexion', button: 'Se connecter' },
-  register: { title: 'Inscription', button: 'Créer mon compte' },
+  register: { title: 'Inscription', button: 'Envoyer ma demande' },
   change: { title: 'Modifier mon mot de passe', button: 'Enregistrer' },
 };
 export function AuthForm({ mode, notice }: { mode: Mode; notice?: string }) {
@@ -17,7 +17,7 @@ export function AuthForm({ mode, notice }: { mode: Mode; notice?: string }) {
     setError('');
     const form = new FormData(event.currentTarget);
     const password = String(form.get(mode === 'change' ? 'newPassword' : 'password') ?? '');
-    if (mode !== 'login') {
+    if (mode === 'change') {
       if ([...password].length < 8 || [...password].length > 128) {
         setError('Choisissez un mot de passe de 8 à 128 caractères.'); return;
       }
@@ -27,9 +27,8 @@ export function AuthForm({ mode, notice }: { mode: Mode; notice?: string }) {
     }
     setLoading(true);
     try {
-      const body = mode === 'change'
-        ? { currentPassword: form.get('currentPassword'), newPassword: password }
-        : { email: form.get('email'), password };
+      const body = mode === 'change' ? { currentPassword: form.get('currentPassword'), newPassword: password }
+        : mode === 'register' ? { email: form.get('email') } : { email: form.get('email'), password };
       const response = await fetch('/api/auth/' + (mode === 'change' ? 'change-password' : mode), {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin', body: JSON.stringify(body),
@@ -42,8 +41,10 @@ export function AuthForm({ mode, notice }: { mode: Mode; notice?: string }) {
           : result.message ?? 'Impossible de terminer cette opération. Réessayez.');
         return;
       }
+      const result = await response.json().catch(() => ({})) as { mustChangePassword?: boolean };
       // Full navigation discards the previous React cache after session mutations.
-      window.location.assign(mode === 'login' ? '/welcome' : '/login?' + (mode === 'register' ? 'registered=1' : 'changed=1'));
+      window.location.assign(mode === 'login' ? (result.mustChangePassword ? '/account/security' : '/welcome')
+        : '/login?' + (mode === 'register' ? 'requested=1' : 'changed=1'));
     } catch { setError('Le service est indisponible. Veuillez réessayer.'); }
     finally { setLoading(false); }
   }
@@ -57,11 +58,12 @@ export function AuthForm({ mode, notice }: { mode: Mode; notice?: string }) {
           placeholder="vous@exemple.fr" autoCapitalize="none" spellCheck={false} />
       </div>}
       {mode === 'change' && <PasswordField id="currentPassword" label="Mot de passe actuel" autoComplete="current-password" />}
-      <PasswordField id={mode === 'change' ? 'newPassword' : 'password'}
+      {mode !== 'register' && <PasswordField id={mode === 'change' ? 'newPassword' : 'password'}
         label={mode === 'change' ? 'Nouveau mot de passe' : 'Mot de passe'}
         autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-        describedBy={mode === 'login' ? undefined : 'password-help'} />
-      {mode !== 'login' && <>
+        describedBy={mode === 'login' ? undefined : 'password-help'} />}
+      {mode === 'register' && <p className="hint">Un administrateur validera votre demande et vous enverra un mot de passe initial par e-mail.</p>}
+      {mode === 'change' && <>
         <p id="password-help" className="hint">8 caractères minimum. <strong>15 caractères ou plus sont recommandés.</strong></p>
         <PasswordField id="confirmation" label="Confirmer le mot de passe" autoComplete="new-password" />
       </>}
@@ -69,7 +71,7 @@ export function AuthForm({ mode, notice }: { mode: Mode; notice?: string }) {
       <button className="primary" type="submit" disabled={loading}>{loading ? 'Veuillez patienter…' : content.button}</button>
     </form>
     <div className="form-bottom">{mode === 'login'
-      ? <Link href="/register">Créer un compte</Link>
+      ? <Link href="/register">Demander un compte</Link>
       : mode === 'register' ? <Link href="/login">Se connecter</Link>
         : <Link href="/welcome">Retour</Link>}</div>
   </>;

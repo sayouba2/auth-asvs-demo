@@ -12,7 +12,8 @@
     "test": "node scripts/test-runner.mjs api",
     "test:e2e": "node scripts/test-runner.mjs all",
     "test:security": "node scripts/test-runner.mjs security",
-    "test:static": "node --test scripts/static.test.mjs"
+    "test:static": "node --test scripts/static.test.mjs",
+    "admin:create": "pnpm --filter @demo/api admin:create"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.0",

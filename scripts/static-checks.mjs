@@ -17,7 +17,7 @@ export function staticChecks() {
   const production = [...sources('apps/api/src'), ...sources('apps/web/app'), ...sources('apps/web/components'), ...sources('apps/api/prisma')];
   const controllers = production.filter(f => f.path.endsWith('.controller.ts')).map(f => f.text).join('\n');
   const routes = [...controllers.matchAll(/@(Get|Post|Put|Patch|Delete)\('([^']+)'\)/g)].map(m => m[1] + ' ' + m[2]).sort();
-  const expectedRoutes = ['Get me', 'Post change-password', 'Post login', 'Post logout', 'Post register'].sort();
+  const expectedRoutes = ['Get me', 'Get requests', 'Post change-password', 'Post login', 'Post logout', 'Post register', 'Post requests/:id/approve'].sort();
   const policy = read('security/rate-limiting.md');
   return [
     { id: 'T-01', pass: ['30', '900', '5', '300', '429', 'Retry-After', '503', 'Redis', 'TRUSTED_PROXY_IP'].every(s => policy.includes(s)),
@@ -30,8 +30,9 @@ export function staticChecks() {
       !Object.keys(JSON.parse(read('apps/api/package.json'))).includes('prisma'),
       evidence: 'Migration DDL seule, aucun seeder ; contrôle complémentaire de base fraîche par le lanceur.' },
     { id: 'T-12', pass: JSON.stringify(routes) === JSON.stringify(expectedRoutes) &&
-      /password!: string/.test(read('apps/api/src/auth/dto.ts')),
-      evidence: 'Inventaire exact des cinq routes ; inscription imposant un mot de passe choisi. Aucun parcours activation/récupération.' },
+      /randomBytes\(18\)/.test(read('apps/api/src/security/password-policy.ts')) &&
+      /initialPasswordExpiresAt: new Date\(\)/.test(read('apps/api/src/auth/auth.service.ts')),
+      evidence: 'Mot de passe initial généré par CSPRNG (randomBytes), expirant après 24 h ou au premier usage ; inventaire des routes.' },
     { id: 'T-13', pass: !production.some(f => /passwordHint|securityQuestion|securityAnswer|secretQuestion|birthplace|maidenName/i.test(f.text)) &&
       JSON.stringify(routes) === JSON.stringify(expectedRoutes),
       evidence: 'Inventaire du schéma, DTO, contrôleur et écrans : aucun indice ni question secrète.' },

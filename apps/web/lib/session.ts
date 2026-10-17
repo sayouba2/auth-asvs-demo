@@ -9,5 +9,5 @@ export async function requireSession() {
   });
   if (response.status === 401) redirect('/login');
   if (!response.ok) throw new Error('Impossible de vérifier votre session.');
-  return response.json() as Promise<{ id: string; email: string; createdAt: string }>;
+  return response.json() as Promise<{ id: string; email: string; role: 'USER' | 'ADMIN'; mustChangePassword: boolean; createdAt: string }>;
 }

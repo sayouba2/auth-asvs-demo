@@ -91,14 +91,14 @@ const rows = requirements.map((requirement, index) => {
   const uiTests = ui.filter(t => t.title.includes(id));
   const staticTest = checks.find(c => c.id === id);
   let status = 'NON TESTÉ';
-  const needsApi = [1, 2, 3, 4, 5, 6, 9, 10].includes(index + 1);
-  const needsUi = [2, 3, 5, 7, 8, 10].includes(index + 1);
+  const needsApi = [1, 2, 3, 4, 5, 6, 9, 10, 12].includes(index + 1);
+  const needsUi = [2, 3, 5, 7, 8, 10, 12].includes(index + 1);
   const apiPass = apiTests.length > 0 && apiTests.every(t => t.status === 'passed');
   const uiPass = uiTests.length > 0 && uiTests.every(t => t.pass);
   const manualPass = ![1, 11, 12, 13].includes(index + 1) || review.checks[id]?.status === 'PASS';
   if ((apiTests.some(t => t.status === 'failed')) || uiTests.some(t => !t.pass) || staticTest?.pass === false) status = 'FAIL';
   else if ((!needsApi || apiPass) && (!needsUi || uiPass) && (!staticTest || staticTest.pass) &&
-      manualPass && (id !== 'T-11' || freshEmpty)) status = id === 'T-12' ? 'N/A justifié' : 'PASS';
+      manualPass && (id !== 'T-11' || freshEmpty)) status = 'PASS';
   return { requirement, id, status, evidence: [
     apiTests.length ? 'jest.json (' + apiTests.length + ' assertions)' : '',
     uiTests.length ? 'playwright.json (' + uiTests.length + ' scénarios)' : '',

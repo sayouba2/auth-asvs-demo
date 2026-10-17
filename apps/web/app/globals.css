@@ -68,3 +68,6 @@ button:disabled { opacity: .65; cursor: wait; }
   h1 { font-size: 25px; }
   .welcome-actions { flex-direction: column; }
 }
+.requests { list-style: none; margin: 0; padding: 0; }
+.requests li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid #dfe6e2; font-size: 14px; overflow-wrap: anywhere; }
+.requests .secondary { min-height: 38px; padding: 8px 14px; }

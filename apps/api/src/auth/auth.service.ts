@@ -1,14 +1,14 @@
-import { ConflictException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
-import { Prisma, Session } from '@prisma/client';
+import { BadRequestException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
+import { Session } from '@prisma/client';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../users/prisma.service';
 import { PasswordPolicy } from '../security/password-policy';
 import { AuditService } from '../security/audit.service';
 import { RateLimitService } from '../security/rate-limit.service';
 import { SessionService, tokenHash } from './session.service';
-import { CredentialsDto, ChangePasswordDto } from './dto';
+import { CredentialsDto, ChangePasswordDto, EmailDto } from './dto';
 import { configuration } from '../config';
-export const PUBLIC_USER = { id: true, email: true, createdAt: true } as const;
+export const PUBLIC_USER = { id: true, email: true, role: true, mustChangePassword: true, createdAt: true } as const;
 @Injectable()
 export class AuthService implements OnModuleInit {
   private dummyHash!: string;
@@ -20,18 +20,11 @@ export class AuthService implements OnModuleInit {
     private readonly sessions: SessionService,
   ) {}
   async onModuleInit() { this.dummyHash = await this.passwords.hash(randomBytes(32).toString('hex')); }
-  async register(dto: CredentialsDto) {
-    this.passwords.validate(dto.password);
-    const hash = await this.passwords.hash(dto.password);
-    try {
-      const user = await this.prisma.user.create({ data: { email: dto.email, passwordHash: hash }, select: PUBLIC_USER });
-      this.audit.event('register_success', user.id);
-      return user;
-    } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
-        throw new ConflictException('Inscription impossible avec ces informations.');
-      throw error;
-    }
+  // Même réponse que le compte existe ou non : la demande ne révèle rien.
+  async register(dto: EmailDto) {
+    const exists = await this.prisma.user.findUnique({ where: { email: dto.email }, select: { id: true } });
+    if (!exists) await this.prisma.registrationRequest.upsert({ where: { email: dto.email }, update: {}, create: { email: dto.email } });
+    this.audit.event('registration_requested', dto.email);
   }
   async login(dto: CredentialsDto, ip: string) {
     const ticket = await this.rates.reserve('loginPair', JSON.stringify([ip, dto.email]));
@@ -48,13 +41,19 @@ export class AuthService implements OnModuleInit {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
       const current = await tx.user.findUniqueOrThrow({ where: { id: user.id } });
       if (current.passwordHash !== user.passwordHash) throw new UnauthorizedException('E-mail ou mot de passe incorrect.');
+      if (current.mustChangePassword) {
+        if (!current.initialPasswordExpiresAt || current.initialPasswordExpiresAt <= new Date())
+          throw new UnauthorizedException('Mot de passe initial expiré ou déjà utilisé. Contactez un administrateur.');
+        // V6.4.1 : usage unique ; cette session sert seulement à choisir le mot de passe définitif.
+        await tx.user.update({ where: { id: user.id }, data: { initialPasswordExpiresAt: new Date() } });
+      }
       await tx.session.create({ data: {
         userId: user.id, tokenHash: tokenHash(token),
         expiresAt: new Date(Date.now() + configuration().sessionMs),
       } });
     });
     this.audit.event('login_success', user.id);
-    return token;
+    return { token, mustChangePassword: user.mustChangePassword };
   }
   me(session: Session) {
     return this.prisma.user.findUniqueOrThrow({ where: { id: session.userId }, select: PUBLIC_USER });
@@ -65,6 +64,8 @@ export class AuthService implements OnModuleInit {
     if (!await this.passwords.verify(user.passwordHash, dto.currentPassword))
       throw new UnauthorizedException('Mot de passe actuel incorrect.');
     this.passwords.validate(dto.newPassword);
+    if (await this.passwords.verify(user.passwordHash, dto.newPassword))
+      throw new BadRequestException('Le nouveau mot de passe doit être différent de l\'actuel.');
     const hash = await this.passwords.hash(dto.newPassword);
     await this.prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${user.id}::uuid FOR UPDATE`;
@@ -72,7 +73,7 @@ export class AuthService implements OnModuleInit {
       const liveSession = await tx.session.findUnique({ where: { id: session.id } });
       if (current.passwordHash !== user.passwordHash || !liveSession || liveSession.revokedAt || liveSession.expiresAt <= new Date())
         throw new UnauthorizedException();
-      await tx.user.update({ where: { id: user.id }, data: { passwordHash: hash, passwordChangedAt: new Date() } });
+      await tx.user.update({ where: { id: user.id }, data: { passwordHash: hash, passwordChangedAt: new Date(), mustChangePassword: false, initialPasswordExpiresAt: null } });
       await tx.session.updateMany({ where: { userId: user.id, revokedAt: null }, data: { revokedAt: new Date() } });
     });
     this.audit.event('password_changed', user.id);

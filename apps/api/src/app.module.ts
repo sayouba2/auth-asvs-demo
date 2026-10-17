@@ -8,9 +8,12 @@ import { PasswordPolicy } from './security/password-policy';
 import { AuditService } from './security/audit.service';
 import { RateLimitService } from './security/rate-limit.service';
 import { OriginGuard, PublicRateGuard } from './security/guards';
+import { AdminController } from './admin/admin.controller';
+import { AdminService } from './admin/admin.service';
+import { AdminGuard } from './admin/admin.guard';
 @Module({
-  controllers: [AuthController],
+  controllers: [AuthController, AdminController],
   providers: [AuthService, SessionService, SessionGuard, PrismaService, PasswordPolicy,
-    AuditService, RateLimitService, OriginGuard, PublicRateGuard],
+    AuditService, RateLimitService, OriginGuard, PublicRateGuard, AdminService, AdminGuard],
 })
 export class AppModule {}

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { ChangePasswordDto, CredentialsDto } from './dto';
+import { ChangePasswordDto, CredentialsDto, EmailDto } from './dto';
 import { AuthRequest, SessionGuard } from './session.guard';
 import { OriginGuard, PublicRateGuard } from '../security/guards';
 import { configuration } from '../config';
@@ -13,15 +13,19 @@ export function cookieOptions() {
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
   @Post('register')
+  @HttpCode(202)
   @UseGuards(PublicRateGuard)
-  register(@Body() dto: CredentialsDto) { return this.auth.register(dto); }
+  async register(@Body() dto: EmailDto) {
+    await this.auth.register(dto);
+    return { message: 'Demande enregistrée. Un administrateur vous enverra vos identifiants par e-mail.' };
+  }
   @Post('login')
   @HttpCode(200)
   @UseGuards(PublicRateGuard)
   async login(@Body() dto: CredentialsDto, @Req() request: Request, @Res({ passthrough: true }) response: Response) {
-    const token = await this.auth.login(dto, request.ip ?? 'unknown');
+    const { token, mustChangePassword } = await this.auth.login(dto, request.ip ?? 'unknown');
     response.cookie(configuration().cookieName, token, { ...cookieOptions(), maxAge: configuration().sessionMs });
-    return { message: 'Connexion réussie.' };
+    return { message: 'Connexion réussie.', mustChangePassword };
   }
   @Get('me')
   @UseGuards(SessionGuard)

@@ -2,7 +2,7 @@
 
 ## 1. Objectif
 
-Vérifier l'application **Next.js + NestJS** de `AGENTS.md` : inscription, connexion, changement de mot de passe, déconnexion et page `/welcome` protégée affichant **« Bienvenue ! Vous êtes authentifié. »**.
+Vérifier l'application **Next.js + NestJS** de `AGENTS.md` : demande d'inscription validée par un administrateur, mot de passe initial, connexion, changement de mot de passe, déconnexion et page `/welcome` protégée affichant **« Bienvenue ! Vous êtes authentifié. »**.
 
 **Référentiel :** [OWASP ASVS 5.0.0 — V6 Authentication](https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/en/0x15-V6-Authentication.md). La suite comprend **13 exigences L1**. La vérification V6.4.1 peut être **N/A** uniquement si aucun mot de passe initial ou code d'activation n'est généré.
 
@@ -24,7 +24,7 @@ Vérifier l'application **Next.js + NestJS** de `AGENTS.md` : inscription, conne
 
 | ID | Scénario | Résultat attendu |
 |---|---|---|
-| F-01 | Ouvrir `/register`, inscrire un nouvel utilisateur avec un mot de passe autorisé. | Compte créé ; aucune donnée sensible renvoyée. |
+| F-01 | Ouvrir `/register`, demander un compte (e-mail seul) ; l'administrateur valide sur `/admin` et envoie les identifiants. | Demande enregistrée sans mot de passe ; compte créé à la validation ; aucune donnée sensible renvoyée hors mot de passe initial à l'administrateur. |
 | F-02 | Se connecter avec le compte créé. | Session valide ; redirection vers `/welcome`. |
 | F-03 | Consulter `/welcome` avec session valide. | Affichage exact : **« Bienvenue ! Vous êtes authentifié. »** |
 | F-04 | Consulter `/welcome` sans cookie puis appeler `GET /api/auth/me`. | Redirection vers `/login` ; API répond `401`. |
@@ -44,7 +44,7 @@ Vérifier l'application **Next.js + NestJS** de `AGENTS.md` : inscription, conne
 
 ### T-02 — V6.2.1 : longueur minimale
 
-**Procédure :** tenter une inscription puis un changement de mot de passe avec 7, 8, 14 et 15 caractères, en choisissant des valeurs absentes de la liste d'interdiction. Contrôler aussi l'envoi direct par API.
+**Procédure :** tenter un changement de mot de passe avec 7, 8, 14 et 15 caractères, en choisissant des valeurs absentes de la liste d'interdiction. Contrôler aussi l'envoi direct par API.
 
 **Attendu :** 7 caractères refusés ; 8, 14 et 15 acceptés si non interdits ; indication visible que **15+ caractères sont recommandés**. **Preuves :** tests API et capture UI.
 
@@ -62,13 +62,13 @@ Vérifier l'application **Next.js + NestJS** de `AGENTS.md` : inscription, conne
 
 ### T-05 — V6.2.4 : liste de mots de passe courants
 
-**Procédure :** vérifier que la source fournit **au moins 3 000 mots de passe fréquents distincts qui satisfont la politique de longueur** (8+). Essayer un mot de passe présent dans cette liste à l'inscription et au changement, via formulaire **et** API ; puis un mot de passe fort absent.
+**Procédure :** vérifier que la source fournit **au moins 3 000 mots de passe fréquents distincts qui satisfont la politique de longueur** (8+). Essayer un mot de passe présent dans cette liste au changement, via formulaire **et** API, et vérifier que les mots de passe initiaux générés n'y figurent pas ; puis un mot de passe fort absent.
 
 **Attendu :** valeurs listées refusées sur les deux parcours ; valeur non listée acceptée si les autres règles sont respectées. **Preuves :** compteur vérifiable du dataset, origine/version du fichier et tests intégration. Ne pas fabriquer artificiellement des valeurs pour atteindre 3 000.
 
 ### T-06 — V6.2.5 : aucune règle de composition
 
-**Procédure :** tester des mots de passe autorisés par longueur et absents de la liste : uniquement des minuscules, uniquement des majuscules, uniquement des chiffres, phrase avec espaces, caractères accentués et symboles. Vérifier l'inscription et le changement via API.
+**Procédure :** tester des mots de passe autorisés par longueur et absents de la liste : uniquement des minuscules, uniquement des majuscules, uniquement des chiffres, phrase avec espaces, caractères accentués et symboles. Vérifier le changement via API.
 
 **Attendu :** aucune obligation de catégorie (chiffres, majuscules, symboles). Un mot de passe peut être rejeté s'il figure dans la liste interdite, et **non** pour une règle de composition. **Preuves :** tests paramétrés.
 
@@ -80,7 +80,7 @@ Vérifier l'application **Next.js + NestJS** de `AGENTS.md` : inscription, conne
 
 ### T-08 — V6.2.7 : collage et gestionnaires de mots de passe
 
-**Procédure :** coller une valeur dans chacun des champs de mot de passe ; inspecter l'absence de `onpaste` bloquant et `autocomplete` : `current-password` pour connexion/ancien mot de passe, `new-password` pour inscription/nouveau mot de passe.
+**Procédure :** coller une valeur dans chacun des champs de mot de passe ; inspecter l'absence de `onpaste` bloquant et `autocomplete` : `current-password` pour connexion/ancien mot de passe, `new-password` pour nouveau mot de passe et confirmation ; `username` pour l'e-mail.
 
 **Attendu :** collage effectif ; autocomplétion et gestionnaires non désactivés par le site. **Preuves :** Playwright (collage) + inspection DOM. La compatibilité avec différents gestionnaires tiers peut nécessiter une vérification manuelle.
 
@@ -104,11 +104,9 @@ Vérifier l'application **Next.js + NestJS** de `AGENTS.md` : inscription, conne
 
 ### T-12 — V6.4.1 : mots de passe initiaux / codes d'activation
 
-**Procédure actuelle (application minimale) :** prouver que l'inscription impose un **mot de passe choisi par l'utilisateur** et qu'il n'existe aucun mécanisme de génération d'un secret initial ou d'un code d'activation : revue des routes, services, UI, e-mails (absents) et configuration.
+**Procédure :** demander un compte, le faire valider par un administrateur, puis vérifier : mot de passe initial généré par CSPRNG (24 caractères, 144 bits), distinct à chaque validation et conforme à la politique ; seul son hash Argon2id est stocké ; refus après 24 h ; refus d'une seconde connexion avec le même secret ; la session obtenue impose le changement, refuse l'administration et refuse un nouveau mot de passe identique au secret initial ; après changement, le secret initial ne fonctionne plus.
 
-**Attendu dans ce périmètre :** **`N/A` motivé et documenté**, et non `PASS` fictif.
-
-**Si la fonctionnalité existe un jour :** tester génération CSPRNG, conformité à la politique, expiration courte ou après première utilisation, impossibilité de réutilisation et obligation de choisir un mot de passe permanent différent. La classification redevient alors `PASS` ou `FAIL` selon preuve.
+**Attendu :** `PASS` ou `FAIL` selon preuve (tests API, Playwright et contrôle statique).
 
 ### T-13 — V6.4.2 : aucun indice ni question secrète
 
@@ -158,31 +156,25 @@ La suite `test:security` doit produire un rapport lisible indiquant **exigence �
 
 ## 7. Matrice de traçabilité à compléter après exécution
 
-| Exigence | Test | Statut initial | Preuve / observation |
+| Exigence | Test | Statut | Preuve / observation |
 |---|---|---|---|
-| V6.1.1 | T-01 | NON TESTÉ | Documentation et revue concordantes ; assertion de configuration Jest non exécutée |
-| V6.2.1 | T-02 | NON TESTÉ | Tests API longueur 7/8/14/15/64/128 et recommandation UI écrits |
-| V6.2.2 | T-03 | NON TESTÉ | Tests API et Playwright du changement écrits |
-| V6.2.3 | T-04 | NON TESTÉ | Absence/erreur du secret actuel et absence de mutation couvertes dans la suite écrite |
-| V6.2.4 | T-05 | NON TESTÉ | Contrôle statique réussi : 10 000 entrées, longueur, unicité, checksum ; routes API non exécutées |
-| V6.2.5 | T-06 | NON TESTÉ | Tests paramétrés de composition libre écrits |
-| V6.2.6 | T-07 | NON TESTÉ | Tests DOM Playwright écrits |
-| V6.2.7 | T-08 | NON TESTÉ | Tests de collage réel et autocomplete écrits ; gestionnaires tiers non testés |
-| V6.2.8 | T-09 | NON TESTÉ | Tests exactitude, Unicode, espaces et casse écrits |
-| V6.3.1 | T-10 | NON TESTÉ | Deux instances, concurrence, TTL, proxy et panne Redis couverts dans la suite écrite |
-| V6.3.2 | T-11 | NON TESTÉ | Migration sans seed vérifiée ; base fraîche non accessible |
-| V6.4.1 | T-12 | N/A justifié | Revue des cinq routes, DTO et écrans : aucun secret initial / code d'activation ; inscription avec secret choisi |
+| V6.1.1 | T-01 | PASS | Constantes du code identiques à `security/rate-limiting.md` ; revue documentaire |
+| V6.2.1 | T-02 | PASS | Changement avec 7/8/14/15/64/128 caractères ; recommandation 15+ visible (Playwright) |
+| V6.2.2 | T-03 | PASS | Changement puis reconnexion ; révocation de toutes les sessions (API et Playwright) |
+| V6.2.3 | T-04 | PASS | Secret actuel absent, absent ou faux : refus sans mutation |
+| V6.2.4 | T-05 | PASS | 10 000 entrées vérifiées ; refus au changement par API et formulaire |
+| V6.2.5 | T-06 | PASS | Composition libre acceptée au changement |
+| V6.2.6 | T-07 | PASS | Champs `type="password"` sur `/login` et `/account/security` ; aucun sur `/register` |
+| V6.2.7 | T-08 | PASS | Collage réel et `autocomplete` ; gestionnaires tiers non testés |
+| V6.2.8 | T-09 | PASS | Casse, espaces, accents, NFC/NFD, absence de troncature, Unicode malformé |
+| V6.3.1 | T-10 | PASS | Deux instances, concurrence, TTL, proxy, IP forgées et panne Redis |
+| V6.3.2 | T-11 | PASS | Migrations sans insertion ; 0 utilisateur dans une base fraîche ; premier admin créé par l'opérateur |
+| V6.4.1 | T-12 | PASS | Mot de passe initial CSPRNG, haché, expiré après 24 h ou au premier usage, remplacement imposé et différent |
 | V6.4.2 | T-13 | PASS | Recherche statique et revue des routes, DTO, schéma et UI : aucun indice ni question secrète |
 
-État relevé le 14 octobre 2026. Voir [le rapport d'exécution](security/evidence/report.md)
-et [la revue manuelle](security/manual-review.json). Les dépendances ne peuvent pas
-être installées dans le terminal actuel (registre npm inaccessible) et Docker
-refuse son socket. Aucun succès API, navigateur ou typecheck n'est revendiqué.
-Le lint des mêmes règles a réussi avec les outils compatibles disponibles
-localement (voir `security/evidence/lint-offline.json`).
-La définition de terminé n'est donc pas encore satisfaite. Relancer
-`pnpm test:security` dans un environnement autorisé pour produire de nouvelles preuves,
-puis mettre à jour cette matrice d'après les résultats, sans recopier des statuts
-issus d'une exécution antérieure.
+État relevé le 17 octobre 2026 (`pnpm test:security`, Jest 47/47, Playwright 7/7 avec
+`CHROME_PATH=/usr/bin/google-chrome`). Voir [le rapport d'exécution](security/evidence/report.md)
+et [la revue manuelle](security/manual-review.json). Restent NON TESTÉ hors matrice : le cookie
+`Secure` sur un vrai déploiement HTTPS et la compatibilité avec des gestionnaires de mots de passe tiers.
 
 **Critère de clôture :** tous les tests fonctionnels F-01 à F-09 réussissent, les **13 exigences** ont un résultat justifié, aucun contrôle applicable n'est `FAIL` ou `NON TESTÉ`, et les preuves peuvent être reproduites depuis une base propre.

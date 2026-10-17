@@ -1,18 +1,17 @@
 import request from 'supertest';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { INestApplication, Logger } from '@nestjs/common';
 import { PrismaService } from '../src/users/prisma.service';
 import { PasswordPolicy } from '../src/security/password-policy';
 import { SessionService } from '../src/auth/session.service';
-import { ORIGIN, PASSWORD, NEXT_PASSWORD, setup, reset, post, register, login, cookie, clearRates } from './helpers';
+import { ORIGIN, PASSWORD, NEXT_PASSWORD, setup, reset, post, activeUser, login, cookie, clearRates } from './helpers';
 let app: INestApplication, prisma: PrismaService;
 beforeAll(async () => { ({ app, prisma } = await setup()); });
 beforeEach(async () => reset(app));
 afterAll(async () => { if (app) { await reset(app); await app.close(); } });
 
-test('F-01 F-02 F-03 C-02 C-03 inscription, hash salé, session opaque, compte public', async () => {
-  const created = await register(app);
-  expect(Object.keys(created.body).sort()).toEqual(['createdAt', 'email', 'id']);
+test('F-02 F-03 C-02 C-03 hash salé, session opaque, compte public', async () => {
+  await activeUser(app);
   const user = await prisma.user.findUniqueOrThrow({ where: { email: 'test-user@example.test' } });
   expect(user.passwordHash).toMatch(/^\$argon2id\$v=19\$m=65536,t=3,p=1\$/);
   const response = await post(app, 'login').send({ email: user.email, password: PASSWORD }).expect(200);
@@ -27,7 +26,8 @@ test('F-01 F-02 F-03 C-02 C-03 inscription, hash salé, session opaque, compte p
   expect(response.headers['set-cookie'][0]).toContain('Path=/');
   expect(response.headers['set-cookie'][0]).toContain('Max-Age=43200');
   const me = await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', sessionCookie).expect(200);
-  expect(me.body).toEqual(created.body);
+  expect(Object.keys(me.body).sort()).toEqual(['createdAt', 'email', 'id', 'mustChangePassword', 'role']);
+  expect(me.body).toMatchObject({ id: user.id, email: user.email, role: 'USER', mustChangePassword: false });
 });
 test('F-04 F-08 C-08 routes privées bloquées directement dans NestJS', async () => {
   await request(app.getHttpServer()).get('/api/auth/me').expect(401);
@@ -36,7 +36,7 @@ test('F-04 F-08 C-08 routes privées bloquées directement dans NestJS', async (
   await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', 'session=forged').expect(401);
 });
 test('T-03 V6.2.2 F-05 F-06 C-05 changement et révocation de toutes les sessions', async () => {
-  await register(app);
+  await activeUser(app);
   const a = await login(app), b = await login(app);
   await post(app, 'change-password').set('Cookie', a)
     .send({ currentPassword: PASSWORD, newPassword: NEXT_PASSWORD }).expect(200);
@@ -46,7 +46,7 @@ test('T-03 V6.2.2 F-05 F-06 C-05 changement et révocation de toutes les session
   expect(await prisma.session.count({ where: { revokedAt: { not: null } } })).toBe(2);
 });
 test('T-04 V6.2.3 absence ou erreur du mot de passe actuel : aucune mutation', async () => {
-  await register(app); const c = await login(app);
+  await activeUser(app); const c = await login(app);
   const before = await prisma.user.findFirstOrThrow();
   await post(app, 'change-password').set('Cookie', c).send({ newPassword: NEXT_PASSWORD }).expect(400);
   await post(app, 'change-password').set('Cookie', c).send({ currentPassword: PASSWORD }).expect(400);
@@ -54,21 +54,15 @@ test('T-04 V6.2.3 absence ou erreur du mot de passe actuel : aucune mutation', a
   expect((await prisma.user.findFirstOrThrow()).passwordHash).toBe(before.passwordHash);
   await post(app, 'change-password').set('Cookie', c).send({ currentPassword: PASSWORD, newPassword: NEXT_PASSWORD }).expect(200);
 });
-test.each([7, 8, 14, 15, 64, 128])('T-02 V6.2.1 inscription de %i caractères', async length => {
-  await post(app, 'register').send({ email: 'length@example.test', password: 'é'.repeat(length) }).expect(length < 8 ? 400 : 201);
-});
 test.each([7, 8, 14, 15, 64, 128])('T-02 V6.2.1 changement de %i caractères', async length => {
-  await register(app); const c = await login(app);
+  await activeUser(app); const c = await login(app);
   await post(app, 'change-password').set('Cookie', c).send({ currentPassword: PASSWORD, newPassword: 'é'.repeat(length) })
     .expect(length < 8 ? 400 : 200);
 });
-test('T-05 V6.2.4 liste réelle appliquée aux deux routes sans contournement API', async () => {
+test('T-05 V6.2.4 liste réelle appliquée au changement sans contournement API', async () => {
   const blocked = [...app.get(PasswordPolicy).blocked];
   expect(blocked.length).toBeGreaterThanOrEqual(3000);
-  for (const password of [blocked[0], blocked[Math.floor(blocked.length / 2)], blocked[blocked.length - 1]]) {
-    await post(app, 'register').send({ email: 'blocked@example.test', password }).expect(400);
-  }
-  await register(app); const c = await login(app);
+  await activeUser(app); const c = await login(app);
   for (const password of [blocked[0], blocked[Math.floor(blocked.length / 2)], blocked[blocked.length - 1]]) {
     await post(app, 'change-password').set('Cookie', c)
       .send({ currentPassword: PASSWORD, newPassword: password }).expect(400);
@@ -77,9 +71,7 @@ test('T-05 V6.2.4 liste réelle appliquée aux deux routes sans contournement AP
 });
 test.each(['unephrasepaisible', 'UNEFORETPAISIBLE', '  des espaces  ', 'Été à Ouagadougou !', '🦋'.repeat(8), '9438172635094827'])(
   'T-06 V6.2.5 composition libre : %s', async password => {
-    await register(app, 'composition@example.test', password);
-    await login(app, 'composition@example.test', password);
-    await register(app, 'change-composition@example.test', PASSWORD);
+    await activeUser(app, 'change-composition@example.test', PASSWORD);
     const c = await login(app, 'change-composition@example.test');
     await post(app, 'change-password').set('Cookie', c)
       .send({ currentPassword: PASSWORD, newPassword: password }).expect(200);
@@ -92,15 +84,15 @@ test.each([
   ['é'.repeat(8), 'e\u0301'.repeat(8)],
   ['z'.repeat(64) + 'a', 'z'.repeat(64) + 'b'],
 ])('T-09 V6.2.8 vérification exacte sans transformation, cas %#', async (password, variant) => {
-  await register(app, 'exact@example.test', password);
+  await activeUser(app, 'exact@example.test', password);
   await post(app, 'login').send({ email: 'exact@example.test', password: variant }).expect(401);
   await login(app, 'exact@example.test', password);
-  await register(app, 'variant@example.test', variant);
+  await activeUser(app, 'variant@example.test', variant);
   await login(app, 'variant@example.test', variant);
   await post(app, 'login').send({ email: 'variant@example.test', password }).expect(401);
 });
 test('F-07 C-04 déconnexion, expiration et suppression des sessions expirées', async () => {
-  await register(app); const c = await login(app);
+  await activeUser(app); const c = await login(app);
   const response = await post(app, 'logout').set('Cookie', c).expect(200);
   expect(response.headers['set-cookie'][0]).toContain('Expires=Thu, 01 Jan 1970');
   await request(app.getHttpServer()).get('/api/auth/me').set('Cookie', c).expect(401);
@@ -111,7 +103,7 @@ test('F-07 C-04 déconnexion, expiration et suppression des sessions expirées',
   expect(await prisma.session.count()).toBe(0);
 });
 test('F-09 C-07 erreurs de connexion génériques, réponses sans secret', async () => {
-  await register(app);
+  await activeUser(app);
   const unknown = await post(app, 'login').send({ email: 'unknown@example.test', password: 'incorrect' }).expect(401);
   const known = await post(app, 'login').send({ email: 'test-user@example.test', password: 'incorrect' }).expect(401);
   expect(unknown.body).toEqual(known.body);
@@ -121,24 +113,27 @@ test('C-07 journalisation des événements sans mot de passe, e-mail brut, hash 
   const captured: string[] = [];
   const spy = jest.spyOn(Logger.prototype, 'log').mockImplementation((message: unknown) => { captured.push(String(message)); });
   try {
-    await register(app);
+    await post(app, 'register').send({ email: 'request@example.test' }).expect(202);
+    await activeUser(app);
     await post(app, 'login').send({ email: 'test-user@example.test', password: 'secret-incorrect-fictif' }).expect(401);
     const c = await login(app);
     const user = await prisma.user.findFirstOrThrow();
     await post(app, 'logout').set('Cookie', c).expect(200);
     const logs = captured.join('\n');
-    for (const value of [PASSWORD, 'secret-incorrect-fictif', 'test-user@example.test', user.passwordHash, c.split('=')[1]])
+    for (const value of [PASSWORD, 'secret-incorrect-fictif', 'test-user@example.test', 'request@example.test', user.passwordHash, c.split('=')[1]])
       expect(logs).not.toContain(value);
-    for (const event of ['register_success', 'login_failure', 'login_success', 'logout']) expect(logs).toContain(event);
+    for (const event of ['registration_requested', 'login_failure', 'login_success', 'logout']) expect(logs).toContain(event);
   } finally { spy.mockRestore(); }
 });
 test('T-09 V6.2.8 Unicode malformé refusé avant encodage UTF-8', async () => {
-  await post(app, 'register').send({ email: 'unicode@example.test', password: 'abcdefgh\ud800' }).expect(400);
-  await register(app, 'unicode@example.test', 'abcdefgh\ufffd');
+  await activeUser(app, 'unicode@example.test', 'abcdefgh\ufffd');
   await post(app, 'login').send({ email: 'unicode@example.test', password: 'abcdefgh\ud800' }).expect(400);
+  const c = await login(app, 'unicode@example.test', 'abcdefgh\ufffd');
+  await post(app, 'change-password').set('Cookie', c)
+    .send({ currentPassword: 'abcdefgh\ufffd', newPassword: 'abcdefgh\ud800' }).expect(400);
 });
 test('C-06 CSRF : origine stricte, referer de secours, aucun GET mutant', async () => {
-  await register(app); const c = await login(app);
+  await activeUser(app); const c = await login(app);
   for (const origin of ['https://evil.test', 'null', ORIGIN + '.evil.test']) {
     await request(app.getHttpServer()).post('/api/auth/logout').set('Cookie', c).set('Origin', origin).expect(403);
   }
@@ -146,17 +141,81 @@ test('C-06 CSRF : origine stricte, referer de secours, aucun GET mutant', async 
   await request(app.getHttpServer()).get('/api/auth/logout').set('Cookie', c).expect(404);
   await request(app.getHttpServer()).post('/api/auth/logout').set('Cookie', c).set('Referer', ORIGIN + '/welcome').expect(200);
 });
-test('normalisation e-mail indépendante, unicité et champs supplémentaires refusés', async () => {
-  await register(app, '  Account@Example.test ');
-  await login(app, 'ACCOUNT@example.test');
-  await register(app, 'other@example.test');
-  await post(app, 'register').send({ email: 'account@example.test', password: PASSWORD }).expect(409);
-  await post(app, 'register').send({ email: 'extra@example.test', password: PASSWORD, admin: true }).expect(400);
-  const users = await prisma.user.findMany();
-  expect(users[0].passwordHash).not.toBe(users[1].passwordHash);
+test('inscription : e-mail normalisé, aucun mot de passe accepté, réponse identique si le compte existe', async () => {
+  await post(app, 'register').send({ email: '  Account@Example.test ' }).expect(202);
+  await post(app, 'register').send({ email: 'account@example.test' }).expect(202);
+  expect((await prisma.registrationRequest.findMany()).map(r => r.email)).toEqual(['account@example.test']);
+  await post(app, 'register').send({ email: 'extra@example.test', password: PASSWORD }).expect(400);
+  await post(app, 'register').send({ email: 'extra@example.test', admin: true }).expect(400);
+  await activeUser(app);
+  const existing = await post(app, 'register').send({ email: 'test-user@example.test' }).expect(202);
+  const fresh = await post(app, 'register').send({ email: 'fresh@example.test' }).expect(202);
+  expect(existing.body).toEqual(fresh.body);
+  expect(await prisma.registrationRequest.count()).toBe(2);
+  expect(await prisma.user.count()).toBe(1);
+});
+const approve = async (adminCookie: string, email: string) => {
+  const list = await request(app.getHttpServer()).get('/api/admin/requests').set('Cookie', adminCookie).expect(200);
+  const pending = (list.body as { id: string; email: string }[]).find(r => r.email === email)!;
+  const approved = await request(app.getHttpServer()).post('/api/admin/requests/' + pending.id + '/approve')
+    .set('Origin', ORIGIN).set('Cookie', adminCookie).expect(200);
+  return approved.body as { email: string; initialPassword: string; expiresAt: string };
+};
+test('T-12 V6.4.1 mot de passe initial aléatoire, haché, à usage unique et à remplacer', async () => {
+  await activeUser(app, 'admin@example.test', PASSWORD, 'ADMIN');
+  const admin = await login(app, 'admin@example.test');
+  await post(app, 'register').send({ email: 'new@example.test' }).expect(202);
+  const account = await approve(admin, 'new@example.test');
+  expect(Object.keys(account).sort()).toEqual(['email', 'expiresAt', 'initialPassword']);
+  expect(account.initialPassword).toMatch(/^[A-Za-z0-9_-]{24}$/);
+  expect(() => app.get(PasswordPolicy).validate(account.initialPassword)).not.toThrow();
+  const user = await prisma.user.findUniqueOrThrow({ where: { email: 'new@example.test' } });
+  expect(user.passwordHash).toMatch(/^\$argon2id\$/);
+  expect(JSON.stringify(user)).not.toContain(account.initialPassword);
+  expect(user.mustChangePassword).toBe(true);
+  expect(user.initialPasswordExpiresAt!.getTime() - Date.now()).toBeLessThanOrEqual(24 * 60 * 60 * 1000);
+  expect(await prisma.registrationRequest.count()).toBe(0);
+  const first = await post(app, 'login').send({ email: 'new@example.test', password: account.initialPassword }).expect(200);
+  expect(first.body.mustChangePassword).toBe(true);
+  const c = cookie(first);
+  await post(app, 'login').send({ email: 'new@example.test', password: account.initialPassword }).expect(401);
+  await request(app.getHttpServer()).get('/api/admin/requests').set('Cookie', c).expect(403);
+  await post(app, 'change-password').set('Cookie', c)
+    .send({ currentPassword: account.initialPassword, newPassword: account.initialPassword }).expect(400);
+  await post(app, 'change-password').set('Cookie', c)
+    .send({ currentPassword: account.initialPassword, newPassword: NEXT_PASSWORD }).expect(200);
+  const after = await prisma.user.findUniqueOrThrow({ where: { email: 'new@example.test' } });
+  expect(after).toMatchObject({ mustChangePassword: false, initialPasswordExpiresAt: null });
+  const next = await post(app, 'login').send({ email: 'new@example.test', password: NEXT_PASSWORD }).expect(200);
+  expect(next.body.mustChangePassword).toBe(false);
+  await post(app, 'login').send({ email: 'new@example.test', password: account.initialPassword }).expect(401);
+});
+test('T-12 V6.4.1 mot de passe initial expiré et secrets distincts', async () => {
+  await activeUser(app, 'admin@example.test', PASSWORD, 'ADMIN');
+  const admin = await login(app, 'admin@example.test');
+  for (const email of ['one@example.test', 'two@example.test']) await post(app, 'register').send({ email }).expect(202);
+  const one = await approve(admin, 'one@example.test'), two = await approve(admin, 'two@example.test');
+  expect(one.initialPassword).not.toBe(two.initialPassword);
+  await prisma.user.update({ where: { email: 'one@example.test' }, data: { initialPasswordExpiresAt: new Date(Date.now() - 1000) } });
+  await post(app, 'login').send({ email: 'one@example.test', password: one.initialPassword }).expect(401);
+  await login(app, 'two@example.test', two.initialPassword);
+});
+test('administration réservée à un admin ayant remplacé son mot de passe initial', async () => {
+  await request(app.getHttpServer()).get('/api/admin/requests').expect(401);
+  await activeUser(app);
+  const user = await login(app);
+  await request(app.getHttpServer()).get('/api/admin/requests').set('Cookie', user).expect(403);
+  await prisma.user.create({ data: {
+    email: 'new-admin@example.test', role: 'ADMIN', passwordHash: await app.get(PasswordPolicy).hash(PASSWORD),
+    mustChangePassword: true, initialPasswordExpiresAt: new Date(Date.now() + 60000),
+  } });
+  const fresh = await login(app, 'new-admin@example.test');
+  await request(app.getHttpServer()).get('/api/admin/requests').set('Cookie', fresh).expect(403);
+  await request(app.getHttpServer()).post('/api/admin/requests/' + randomUUID() + '/approve').set('Origin', ORIGIN)
+    .set('Cookie', fresh).expect(403);
 });
 test('concurrence : aucune session obtenue avec ancien secret ne survit au changement', async () => {
-  await register(app); const c = await login(app);
+  await activeUser(app); const c = await login(app);
   await clearRates(app);
   const [loginResult, changeResult] = await Promise.all([
     post(app, 'login').send({ email: 'test-user@example.test', password: PASSWORD }),

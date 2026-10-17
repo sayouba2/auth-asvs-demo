@@ -1,7 +1,7 @@
 import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
 import { RateLimitService, LIMITS } from '../src/security/rate-limit.service';
-import { ORIGIN, PASSWORD, setup, reset, post, register, login, clearRates } from './helpers';
+import { ORIGIN, PASSWORD, setup, reset, post, activeUser, login, clearRates } from './helpers';
 let a: INestApplication, b: INestApplication, rates: RateLimitService;
 const unknown = { email: 'unknown@example.test', password: 'incorrect' };
 beforeAll(async () => { const first = await setup(); a = first.app; rates = first.rates; b = (await setup()).app; });
@@ -42,7 +42,7 @@ test('T-10 V6.3.1 requêtes simultanées : au plus cinq vérifications', async (
   expect(results.filter(r => r.status === 429)).toHaveLength(7);
 });
 test('T-10 V6.3.1 aucune interdiction du compte sur une autre IP de confiance', async () => {
-  await register(a);
+  await activeUser(a);
   for (let i = 0; i < 5; i++) await post(a, 'login').send({ ...unknown, email: 'test-user@example.test' }).expect(401);
   await post(a, 'login').send({ email: 'test-user@example.test', password: PASSWORD }).expect(429);
   await post(b, 'login')
@@ -57,28 +57,28 @@ test('T-10 V6.3.1 en-têtes IP forgés sans secret proxy ignorés', async () => 
 });
 test('T-10 V6.3.1 inscriptions malformées limitées avant validation DTO', async () => {
   for (let i = 0; i < 10; i++) await post(a, 'register').send({ email: 'incorrect' }).expect(400);
-  await post(b, 'register').send({ email: 'valid@example.test', password: PASSWORD }).expect(429);
+  await post(b, 'register').send({ email: 'valid@example.test' }).expect(429);
 });
 test('T-10 V6.3.1 changement limité par utilisateur à cinq tentatives', async () => {
-  await register(a); const c = await login(a);
+  await activeUser(a); const c = await login(a);
   for (let i = 0; i < 5; i++) await post(a, 'change-password').set('Cookie', c)
     .send({ currentPassword: 'incorrect', newPassword: PASSWORD }).expect(401);
   await post(b, 'change-password').set('Cookie', c)
     .send({ currentPassword: PASSWORD, newPassword: 'nouveau mot de passe' }).expect(429);
 });
 test('T-10 V6.3.1 succès ne consomme pas un échec de la paire', async () => {
-  await register(a);
+  await activeUser(a);
   for (let i = 0; i < 6; i++) await login(a);
   const keys = await rates.redis.keys(process.env.RATE_LIMIT_NAMESPACE! + ':loginPair:*');
   expect(keys).toHaveLength(0);
 });
 test('T-10 V6.3.1 Redis indisponible : 503, sessions lisibles et déconnexion possible', async () => {
-  await register(a); const c = await login(a);
+  await activeUser(a); const c = await login(a);
   await clearRates(a);
   rates.redis.disconnect();
   try {
     await post(a, 'login').send(unknown).expect(503);
-    await post(a, 'register').send({ email: 'new@example.test', password: PASSWORD }).expect(503);
+    await post(a, 'register').send({ email: 'new@example.test' }).expect(503);
     await post(a, 'change-password').set('Cookie', c)
       .send({ currentPassword: PASSWORD, newPassword: 'nouveau mot de passe' }).expect(503);
     await request(a.getHttpServer()).get('/api/auth/me').set('Cookie', c).expect(200);

@@ -1,5 +1,5 @@
 {
-  "reviewedAt": "2026-10-14",
+  "reviewedAt": "2026-10-17",
   "reviewer": "Revue du code par Codex ; aucun audit indépendant revendiqué",
   "checks": {
     "T-01": {
@@ -8,11 +8,11 @@
     },
     "T-11": {
       "status": "PASS",
-      "evidence": "Revue migrations, package.json et setup-env.mjs : aucun INSERT, seed ou compte utilisateur initial. Contrôle de la base fraîche encore requis."
+      "evidence": "Revue migrations, package.json et setup-env.mjs : aucun INSERT ni seed. Le premier administrateur est créé par l'opérateur (pnpm admin:create) avec un mot de passe initial aléatoire à usage unique : aucun compte ni secret par défaut livré."
     },
     "T-12": {
       "status": "PASS",
-      "evidence": "N/A : seuls register/login/me/change-password/logout existent. CredentialsDto impose un mot de passe choisi. Aucun e-mail ni code d'activation ni mot de passe initial n'est émis. Le hash fictif anti-énumération ne correspond à aucun compte ; les jetons aléatoires sont des sessions. Réévaluer si un nouveau parcours est ajouté."
+      "evidence": "Inscription sans mot de passe ; l'administrateur valide la demande. Mot de passe initial : randomBytes(18) (144 bits), conforme à la politique, seul le hash Argon2id est stocké, valable 24 h et consommé à la première connexion ; la session obtenue impose le choix d'un nouveau mot de passe différent. Envoi par lien mailto depuis la messagerie de l'administrateur."
     },
     "T-13": {
       "status": "PASS",

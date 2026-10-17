@@ -25,9 +25,18 @@ pnpm --filter @demo/api prisma migrate dev
 pnpm dev
 ```
 
-Ouvrir **http://localhost:3000/register**. Aucun compte n'est précréé.
-L'inscription mène à la connexion. Le changement révoque toutes les sessions
-et demande une nouvelle connexion.
+Aucun compte n'est précréé. Créer le premier administrateur :
+
+```bash
+pnpm admin:create admin@exemple.fr
+```
+
+La commande affiche un mot de passe initial aléatoire, valable 24 h et
+utilisable une seule fois : à la première connexion, il faut en choisir un autre.
+Un visiteur demande un compte sur **http://localhost:3000/register** (e-mail seul).
+L'administrateur valide la demande sur `/admin`, puis « Envoyer les identifiants »
+ouvre sa messagerie avec le message prérempli (aucun serveur d'e-mail).
+Le changement de mot de passe révoque toutes les sessions et demande une nouvelle connexion.
 
 `setup:env` crée un `.env` local, non versionné, avec des secrets aléatoires
 et des permissions 0600. Il ne remplace jamais un fichier existant.

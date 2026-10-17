@@ -36,3 +36,11 @@ test('C-01 configuration exige HTTPS en production et cookie __Host-', () => {
     process.env.NODE_ENV = original.mode;
   }
 });
+test('T-12 V6.4.1 mots de passe initiaux aléatoires conformes à la politique', () => {
+  const generated = Array.from({ length: 200 }, () => policy.generateInitial());
+  expect(new Set(generated).size).toBe(200);
+  for (const password of generated) {
+    expect(password).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    expect(policy.blocked.has(password)).toBe(false);
+  }
+});
